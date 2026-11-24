@@ -53,8 +53,20 @@
   #toolbar button.on{background:#dbeafe;border-color:#93c5fd}
   #toolbar select{border-color:var(--line);background:#fff}
   .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
-  .color{position:relative;display:inline-flex}
-  .color input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+  .cbtn{display:inline-flex !important;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0 7px !important}
+  .cbtn .ab{font-weight:700;font-size:15px;line-height:1;font-family:Georgia,serif}
+  .cbtn .bar{display:block;width:18px;height:4px;border-radius:2px;border:1px solid rgba(0,0,0,.15)}
+  .cbtn .caret{font-size:9px;color:#6b7280;margin-left:2px}
+  #palette{position:fixed;display:none;z-index:40;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px rgba(0,0,0,.18);padding:10px;width:236px}
+  #palette.open{display:block}
+  #palette .ttl{font-size:12px;color:#6b7280;margin-bottom:6px}
+  #palette .grid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px}
+  #palette .sw{width:22px;height:22px;border-radius:5px;border:1px solid rgba(0,0,0,.18);cursor:pointer;padding:0}
+  #palette .sw:hover{transform:scale(1.15);box-shadow:0 0 0 2px #93c5fd}
+  #palette .row{display:flex;gap:6px;margin-top:9px}
+  #palette .row button{flex:1;border:1px solid var(--line);background:#fff;border-radius:6px;padding:6px;font-size:13px;cursor:pointer}
+  #palette .row button:hover{background:#f3f4f6}
+  @media (max-width:760px){ #palette{width:290px} #palette .sw{width:28px;height:28px} #palette .row button{padding:9px;font-size:15px} }
   /* Área de página */
   #scroller{flex:1;overflow:auto;padding:30px 10px}
   /* Hojas tamaño carta: 8.5 x 11 in (816 x 1056 px), márgenes de 1 in */
@@ -191,8 +203,8 @@
     <button data-cmd="italic" title="Cursiva (Ctrl+I)"><i>K</i></button>
     <button data-cmd="underline" title="Subrayado (Ctrl+U)"><u>S</u></button>
     <button data-cmd="strikeThrough" title="Tachado"><s>ab</s></button>
-    <span class="color" title="Color de texto"><button>🅰</button><input type="color" id="fore" value="#000000"></span>
-    <span class="color" title="Resaltar"><button>🖍</button><input type="color" id="back" value="#ffff00"></span>
+    <button class="cbtn" id="foreBtn" title="Color de letra"><span class="ab">A</span><span class="bar" id="foreBar" style="background:#dc2626"></span></button>
+    <button class="cbtn" id="backBtn" title="Resaltar texto"><span class="ab" style="font-family:inherit">🖍</span><span class="bar" id="backBar" style="background:#fde047"></span></button>
     <span class="sep"></span>
     <button data-cmd="justifyLeft" title="Alinear a la izquierda">⯇</button>
     <button data-cmd="justifyCenter" title="Centrar">≡</button>
@@ -223,6 +235,11 @@
   <div class="row"><button class="btn" id="dlgCancel">Cancelar</button><button class="btn" id="dlgExtra" style="display:none"></button><button class="btn primary" id="dlgOk">Aceptar</button></div>
 </div></div>
 <div id="toast"></div>
+
+<div id="palette"><div class="ttl" id="palTitle">Color de letra</div><div class="grid" id="palGrid"></div>
+  <div class="row"><button id="palNone">Automático</button><button id="palMore">🎨 Más colores…</button></div>
+  <input type="color" id="palPicker" style="position:absolute;width:0;height:0;opacity:0;border:0;padding:0">
+</div>
 
 <div id="fdlg"><div class="box">
   <div style="font-weight:700;font-size:16px">📁 Nueva clase o curso</div>
@@ -599,8 +616,50 @@ document.querySelectorAll('[data-cmd]').forEach(b=>b.addEventListener('mousedown
 $('#block').onchange=e=>exec('formatBlock',e.target.value);
 $('#font').onchange=e=>exec('fontName',e.target.value);
 $('#size').onchange=e=>exec('fontSize',e.target.value);
-$('#fore').oninput=e=>exec('foreColor',e.target.value);
-$('#back').oninput=e=>exec('hiliteColor',e.target.value);
+/* ===== Paleta de colores (letra y resaltado) ===== */
+const COLORES_LETRA=['#000000','#434343','#666666','#999999','#b7b7b7','#d9d9d9','#efefef','#ffffff',
+  '#dc2626','#ea580c','#ca8a04','#16a34a','#0891b2','#2563eb','#7c3aed','#db2777',
+  '#7f1d1d','#9a3412','#713f12','#14532d','#164e63','#1e3a8a','#4c1d95','#831843',
+  '#fca5a5','#fdba74','#fde047','#86efac','#67e8f9','#93c5fd','#c4b5fd','#f9a8d4'];
+const COLORES_RESALTE=['#fef08a','#fde047','#bbf7d0','#86efac','#a5f3fc','#bfdbfe','#ddd6fe','#fbcfe8',
+  '#fed7aa','#fecaca','#e5e7eb','#d1d5db','#facc15','#4ade80','#38bdf8','#f472b6'];
+let palMode='fore';
+function aplicarColor(c){
+  $('#palette').classList.remove('open');
+  if(palMode==='fore'){ exec('foreColor', c || '#111827'); if(c) $('#foreBar').style.background=c; }
+  else { exec('hiliteColor', c || 'transparent'); if(c) $('#backBar').style.background=c; }
+}
+function abrirPaleta(mode, btn){
+  rememberSel(); palMode=mode;
+  const pal=$('#palette');
+  if(pal.classList.contains('open') && pal.dataset.mode===mode){ pal.classList.remove('open'); return; }
+  pal.dataset.mode=mode;
+  $('#palTitle').textContent = mode==='fore' ? 'Color de letra' : 'Color de resaltado';
+  $('#palNone').textContent = mode==='fore' ? 'Automático' : 'Sin resaltado';
+  const g=$('#palGrid'); g.innerHTML='';
+  (mode==='fore'?COLORES_LETRA:COLORES_RESALTE).forEach(c=>{
+    const b=document.createElement('button'); b.className='sw'; b.style.background=c; b.title=c;
+    b.addEventListener('mousedown',e=>e.preventDefault());
+    b.onclick=()=>aplicarColor(c); g.appendChild(b);
+  });
+  pal.classList.add('open');
+  const r=btn.getBoundingClientRect(), w=pal.offsetWidth;
+  pal.style.left=Math.max(6, Math.min(r.left, window.innerWidth-w-6))+'px';
+  pal.style.top=(r.bottom+6)+'px';
+}
+// Clic en el botón: abre la paleta (y no quita la selección del texto)
+['foreBtn','backBtn'].forEach(id=>{
+  const b=$('#'+id);
+  b.addEventListener('mousedown',e=>e.preventDefault());
+  b.onclick=e=>{ e.stopPropagation(); abrirPaleta(id==='foreBtn'?'fore':'back', b); };
+});
+['palNone','palMore'].forEach(id=>$('#'+id).addEventListener('mousedown',e=>e.preventDefault()));
+$('#palNone').onclick=()=>aplicarColor(null);
+$('#palMore').onclick=()=>{ $('#palPicker').value = palMode==='fore' ? '#dc2626' : '#fde047'; $('#palPicker').click(); };
+$('#palPicker').addEventListener('change',e=>aplicarColor(e.target.value));
+document.addEventListener('mousedown',e=>{ if(!e.target.closest('#palette,#foreBtn,#backBtn')) $('#palette').classList.remove('open'); });
+$('#scroller').addEventListener('scroll',()=>$('#palette').classList.remove('open'));
+$('#toolbar').addEventListener('scroll',()=>$('#palette').classList.remove('open'));
 
 function rememberSel(){ const s=getSelection(); if(s.rangeCount && page.contains(s.anchorNode)) savedRange=s.getRangeAt(0).cloneRange(); }
 function restoreSel(){ if(savedRange){ const s=getSelection(); s.removeAllRanges(); s.addRange(savedRange); } }
